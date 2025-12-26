@@ -100,6 +100,35 @@ lval* lval_add(lval* v, lval* x) {
   return v;
 }
 
+/* Copy an lval */
+lval* lval_copy(lval* v) {
+  lval* x = malloc(sizeof(lval));
+  x->type = v->type;
+  switch (v->type) {
+    /* Copy Numbers and Functions Directly */
+    case LVAL_NUM: x->num = v->num; break;
+    
+    /* Copy Strings using malloc and strcpy */
+    case LVAL_ERR:
+      x->err = malloc(strlen(v->err) + 1);
+      strcpy(x->err, v->err); break;
+    case LVAL_SYM:
+      x->sym = malloc(strlen(v->sym) + 1);
+      strcpy(x->sym, v->sym); break;
+    
+    /* Copy Lists by copying each sub-expression */
+    case LVAL_SEXPR:
+    case LVAL_QEXPR:
+      x->count = v->count;
+      x->cell = malloc(sizeof(lval*) * x->count);
+      for (int i = 0; i < x->count; i++) {
+        x->cell[i] = lval_copy(v->cell[i]);
+      }
+    break;
+  }
+  return x;
+}
+
 lval* lval_pop(lval* v, int i) {
   lval* x = v->cell[i];
   memmove(&v->cell[i], &v->cell[i+1],
@@ -217,15 +246,47 @@ lval* builtin_join(lval* a) {
 }
 
 lval* builtin_len(lval* l) {
-    LASSERT(l, l->count == 1, 
+    LASSERT(l, l->count == 1,
             "Function 'len' passed a wrong type");
-    LASSERT(l, l->cell[0]->type == LVAL_QEXPR, 
+    LASSERT(l, l->cell[0]->type == LVAL_QEXPR,
             "Function 'len' passed incorrect type");
     
-    lval* x = lval_take(l, 0); 
+    lval* x = lval_take(l, 0);
     long length = x->count;
     lval_del(x);
     return lval_num(length);
+}
+
+lval* builtin_cons(lval* a) {
+    LASSERT(a, a->count == 2,
+            "Function 'cons' passed incorrect number of arguments.");
+    LASSERT(a, a->cell[1]->type == LVAL_QEXPR,
+            "Function 'cons' passed incorrect type for argument 2. Expected Q-Expression.");
+
+    lval* val = lval_copy(lval_pop(a, 0)); // Get the value to prepend
+    lval* qexpr = lval_pop(a, 0);       // Get the Q-Expression
+
+    lval* result = lval_qexpr();
+    result = lval_add(result, val); // Add the value to the new Q-expression
+    result = lval_join(result, qexpr); // Join the rest of the Q-expression
+
+    lval_del(a); // Delete the original arguments S-expression
+    return result;
+}
+
+lval* builtin_init(lval* a) {
+    LASSERT(a, a->count == 1, 
+            "Function 'init' passed incorrect number of arguments");
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR,
+            "Function 'init' passed incorrect type of argument");
+    LASSERT(a, a->cell[0]->count != 0,
+            "Function 'init' passed {}.");
+
+    lval* v = lval_take(a, 0);
+    
+    lval_del(lval_pop(v, v->count - 1));
+    
+    return v;
 }
    
 lval* builtin_op(lval* a, char* op) {
@@ -269,6 +330,9 @@ lval* builtin(lval* a, char* func) {
   if (strcmp("tail", func) == 0) { return builtin_tail(a); }
   if (strcmp("join", func) == 0) { return builtin_join(a); }
   if (strcmp("eval", func) == 0) { return builtin_eval(a); }
+  if (strcmp("len", func) == 0) { return builtin_len(a); }
+  if (strcmp("cons", func) == 0) { return builtin_cons(a); }
+  if (strcmp("init", func) == 0) { return builtin_init(a); }
   if (strstr("+-/*", func)) { return builtin_op(a, func); }
   lval_del(a);
   return lval_err("Unknown Function!");
@@ -345,8 +409,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                                    \
       number : /-?[0-9]+/ ;                              \
-      symbol : \"list\" | \"head\" | \"tail\" | \"eval\" \
-             | \"join\" | '+' | '-' | '*' | '/' ;        \
+      symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/;         \
       sexpr  : '(' <expr>* ')' ;                         \
       qexpr  : '{' <expr>* '}' ;                         \
       expr   : <number> | <symbol> | <sexpr> | <qexpr> ; \
