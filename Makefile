@@ -6,7 +6,7 @@ CFLAGS = -std=c99 -Wall -g
 LIBS = -ledit -lm
 
 # Target executable
-TARGET = parsing
+TARGET = ypsil
 
 # Source files
 SRCS = parsing.c mpc.c
