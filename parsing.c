@@ -29,7 +29,7 @@ typedef struct lenv lenv;
 
 /* Lisp Value */
 
-enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR };
+enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_STR, LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR };
 
 typedef lval*(*lbuiltin)(lenv*, lval*);
 
@@ -40,6 +40,7 @@ struct lval {
   long num;
   char* err;
   char* sym;
+  char* str;
   
   /* Function */
   lbuiltin builtin;
@@ -77,6 +78,14 @@ lval* lval_sym(char* s) {
   v->sym = malloc(strlen(s) + 1);
   strcpy(v->sym, s);
   return v;
+}
+
+lval* lval_str(char* s) {
+    lval* v = malloc(sizeof(lval));
+    v->type = LVAL_STR;
+    v->str = malloc(sizeof(strlen(s) + 1));
+    strcpy(v->str, s);
+    return v;
 }
 
 lval* lval_builtin(lbuiltin func) {
@@ -135,6 +144,7 @@ void lval_del(lval* v) {
     break;
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
+    case LVAL_STR: free(v->str); break;
     case LVAL_QEXPR:
     case LVAL_SEXPR:
       for (int i = 0; i < v->count; i++) {
@@ -170,6 +180,8 @@ lval* lval_copy(lval* v) {
     case LVAL_SYM: x->sym = malloc(strlen(v->sym) + 1);
       strcpy(x->sym, v->sym);
     break;
+    case LVAL_STR: x->str = malloc(strlen(v->str) + 1);
+        strcpy(x->str, v->str); break;
     case LVAL_SEXPR:
     case LVAL_QEXPR:
       x->count = v->count;
@@ -226,6 +238,17 @@ void lval_print_expr(lval* v, char open, char close) {
   putchar(close);
 }
 
+void lval_print_str(lval* v) {
+    char* escaped = malloc(strlen(v->str) + 1);
+    strcpy(escaped, v->str);
+
+    escaped = mpcf_escape(escaped);
+
+    printf("\"%s\"", escaped);
+
+    free(escaped);
+}
+
 void lval_print(lval* v) {
   switch (v->type) {
     case LVAL_FUN:
@@ -239,6 +262,7 @@ void lval_print(lval* v) {
     case LVAL_NUM:   printf("%li", v->num); break;
     case LVAL_ERR:   printf("Error: %s", v->err); break;
     case LVAL_SYM:   printf("%s", v->sym); break;
+    case LVAL_STR:   lval_print_str(v); break;
     case LVAL_SEXPR: lval_print_expr(v, '(', ')'); break;
     case LVAL_QEXPR: lval_print_expr(v, '{', '}'); break;
   }
@@ -252,6 +276,7 @@ char* ltype_name(int t) {
     case LVAL_NUM: return "Number";
     case LVAL_ERR: return "Error";
     case LVAL_SYM: return "Symbol";
+    case LVAL_STR: return "String";
     case LVAL_SEXPR: return "S-Expression";
     case LVAL_QEXPR: return "Q-Expression";
     default: return "Unknown";
@@ -559,6 +584,7 @@ int lval_eq(lval* x, lval* y) {
         case LVAL_NUM: return (x->num == y->num);
         case LVAL_ERR: return (x->err == y->err);
         case LVAL_SYM: return (x->sym == y->sym);
+        case LVAL_STR: return (strcmp(x->str, y->str) == 0);
 
         case LVAL_FUN:
             if (x->builtin || y->builtin) {
@@ -803,11 +829,25 @@ lval* lval_read_num(mpc_ast_t* t) {
   return errno != ERANGE ? lval_num(x) : lval_err("Invalid Number.");
 }
 
+lval* lval_read_str(mpc_ast_t* t) {
+  t->contents[strlen(t->contents) - 1] = '\0';
+
+  char* unescaped = malloc(strlen(t->contents+1)+1);
+  strcpy(unescaped, t->contents+1);
+
+  unescaped = mpcf_unescape(unescaped);
+
+  lval* str = lval_str(unescaped);
+  free(unescaped);
+  return str;
+}
+
 lval* lval_read(mpc_ast_t* t) {
   
   if (strstr(t->tag, "number")) { return lval_read_num(t); }
   if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
-  
+  if (strstr(t->tag, "string")) { return lval_read_str(t); }
+
   lval* x = NULL;
   if (strcmp(t->tag, ">") == 0) { x = lval_sexpr(); } 
   if (strstr(t->tag, "sexpr"))  { x = lval_sexpr(); }
@@ -839,7 +879,8 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                                     \
       number : /-?[0-9]+/ ;                               \
-      symbol  : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/ ;        \
+      symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/ ;         \
+      string : /\"(\\\\.|[^\"])*\"/ ;                     \
       sexpr  : '(' <expr>* ')' ;                          \
       qexpr  : '{' <expr>* '}' ;                          \
       expr   : <number> | <symbol> | <sexpr> | <qexpr> ;  \
