@@ -25,7 +25,10 @@ all: $(TARGET)
 # Rule to build the target executable
 $(TARGET): $(SRCS)
 	@echo "Compiling..."
-	@$(CC) $(CFLAGS) $(SRCS) -o $(TARGET) $(LIBS)
+	@$(CC) $(CFLAGS) $(SRCS) -o $(TARGET) $(LIBS) || { \
+		echo "$(RED)Error: compilation failed.$(NC)"; \
+		exit 1; \
+	}
 	@echo "$(GREEN)Success: '$(TARGET)' has been compiled.$(NC)"
 
 # Rule to clean up build artifacts
@@ -33,3 +36,6 @@ clean:
 	@echo "Cleaning up..."
 	@rm -f $(TARGET)
 	@echo "Done."
+
+run:
+	@./ypsil
