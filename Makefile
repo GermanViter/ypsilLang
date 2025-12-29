@@ -9,7 +9,7 @@ LIBS = -ledit -lm
 TARGET = ypsil
 
 # Source files
-SRCS = parsing.c mpc.c
+SRCS = ypsil.c mpc.c
 
 # ANSI escape codes for colors
 GREEN = \033[0;32m
