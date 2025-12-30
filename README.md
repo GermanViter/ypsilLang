@@ -1,4 +1,8 @@
-# ypsilLang
+<p align="center">
+  <img src="Ypsil.png" alt="Project banner" width="800"/>
+</p>
+
+#ypsilLang
 
 A small Lisp-like interpreted programming language written in C. It uses the "mpc" parser combinator library to parse and evaluate expressions. The interpreter provides a simple REPL (Read-Eval-Print Loop) for interactive use.
 
